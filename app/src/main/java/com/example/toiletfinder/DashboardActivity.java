@@ -1,15 +1,24 @@
 package com.example.toiletfinder;
 
+import android.Manifest;
 import android.content.DialogInterface;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -17,6 +26,7 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -27,6 +37,7 @@ import java.util.HashMap;
 
 public class DashboardActivity extends AppCompatActivity implements OnMapReadyCallback {
 
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private GoogleMap googleMap;
     private DatabaseReference databaseReference;
     private HashMap<String, Marker> markerHashMap = new HashMap<>();
@@ -46,11 +57,22 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
             mapFragment.getMapAsync(this);
         }
     }
-
     @Override
     public void onMapReady(GoogleMap map) {
         googleMap = map;
-        googleMap.setMyLocationEnabled(true);
+
+        // Check if the location permission is granted
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            // Enable the display of the user's location on the map
+            enableMyLocation();
+            moveCameraToCurrentLocation();
+        } else {
+            // Request the location permission
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        }
 
         googleMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
@@ -129,6 +151,47 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         });
     }
 
+    private void moveCameraToCurrentLocation() {
+        // Get the user's current location and move the camera to that location
+        FusedLocationProviderClient fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        fusedLocationClient.getLastLocation()
+                .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                    @Override
+                    public void onSuccess(Location location) {
+                        if (location != null) {
+                            LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+                            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 12));
+                        }
+                    }
+                });
+    }
+
+    private void requestLocationPermission() {
+        // Check if the device is running Android 6.0 (Marshmallow) or higher
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // Request the location permission
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            // Check if the location permission is granted
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Permission granted, enable the display of the user's location on the map
+                enableMyLocation();
+                moveCameraToCurrentLocation();
+            } else {
+                // Permission denied, show a toast message or handle the scenario accordingly
+                Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+
     private void showMarkerInputDialog(final LatLng latLng) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Add Marker");
@@ -191,9 +254,6 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         });
         builder.show();
     }
-
-
-    // ...
 
     private void showEditMarkerDialog(final String markerId) {
         // Retrieve the MarkerData object from the HashMap using the markerId
@@ -262,5 +322,16 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
             markerDataMap.remove(markerId);
         }
     }
-
+    private void enableMyLocation() {
+        // Check if the GoogleMap object is available
+        if (googleMap != null) {
+            try {
+                // Enable the display of the user's location on the map
+                googleMap.setMyLocationEnabled(true);
+            } catch (SecurityException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 }
+
